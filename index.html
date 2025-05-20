@@ -1,95 +1,113 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calorie Tracker</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calorie Tracker</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <form class="input">
-            <h1>Calorie Counter</h1>
-            <div class="balance">Total Calorie Intake: <span id="total-calorie-intake">0</span> kcal</div>
-            <input type="number" id="age" placeholder="Enter your age" />
-            <input type="number" id="weight" placeholder="Enter your weight (kg)" />
-            <input type="number" id="height" placeholder="Enter your height (cm)" />
-            <input type="text" id="food-item" placeholder="Enter the food item" />
-            <input type="number" id="calorie-intake" placeholder="Enter daily or item calorie intake" />
-            <button id="add-food-btn">Add Food Item</button> </form>
-        <div class="food-list-section">
-            <h2>Food Items</h2>
-            <ul id="food-list">
-                </ul> 
-        </div>
+  <div class="container">
+    <form class="input" onsubmit="return fetchNutritionData(event)">
+      <h1>Calorie Counter</h1>
+      <div class="balance">Total Calorie Intake: <span id="total-calorie-intake">0</span> kcal</div>
+      <input type="text" id="food-item" placeholder="Enter the food item" />
+      <button id="add-food-btn" type="submit">Add Food Item</button>
+    </form>
+
+    <div class="food-list-section">
+      <h2>Food Items</h2>
+      <ul id="food-list"></ul>
     </div>
-    <script>
-        // Get necessary elements
-        const foodItemInput = document.getElementById('food-item');
-        const calorieIntakeInput = document.getElementById('calorie-intake');
-        const addFoodBtn = document.getElementById('add-food-btn'); // Get the renamed button
-        const foodListUl = document.getElementById('food-list');
-        const totalCalorieSpan = document.getElementById('total-calorie-intake');
-        // Array to store food items and their calories
-        let foodItems = []; // { name: 'Apple', calories: 50 }
-        // Function to render the food list and update total calories
-        function renderFoodList() {
-            // Clear the current list display
-            foodListUl.innerHTML = '';
-            let totalCalories = 0;
-            // Loop through the foodItems array
-            foodItems.forEach((item, index) => {
-                // Create a list item element
-                const li = document.createElement('li');
-                li.setAttribute('data-index', index); // Store the index for deletion
-                // Set the text content of the list item
-                li.textContent = `${item.name}: ${item.calories} kcal`;
-                // Create a delete button for this item
-                const deleteBtn = document.createElement('button');
-                deleteBtn.textContent = 'Delete';
-                deleteBtn.classList.add('delete-item-btn'); // Add a class for styling/selection
-                // Add click event listener to the delete button
-                deleteBtn.addEventListener('click', function() {
-                    // Remove the item from the foodItems array based on its index
-                    foodItems.splice(index, 1);
-                    // Re-render the list
-                    renderFoodList();
-                });
-                // Append the delete button to the list item
-                li.appendChild(deleteBtn);
-                // Append the list item to the food list UL
-                foodListUl.appendChild(li);
-                // Add item's calories to the total
-                totalCalories += item.calories;
-            });
-            // Update the total calorie display
-            totalCalorieSpan.textContent = totalCalories;
+  </div>
+
+  <script>
+    async function fetchNutritionData(event) {
+      event.preventDefault();
+
+      const foodItem = document.getElementById('food-item').value.trim();
+      if (!foodItem) {
+        alert('Please enter a food item.');
+        return false;
+      }
+
+      // Construct the URL for the Open Food Facts API
+      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(foodItem)}&search_simple=1&action=process&json=1`;
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
         }
-        // Add event listener to the "Add Food Item" button
-        addFoodBtn.addEventListener('click', function(event) {
-            // Prevent form submission
-            event.preventDefault();
-            // Get input values
-            const foodName = foodItemInput.value.trim(); // .trim() removes leading/trailing whitespace
-            const calories = parseFloat(calorieIntakeInput.value);
-            // Basic validation
-            if (foodName === '' || isNaN(calories) || calories < 0) {
-                alert('Please enter a valid food item and positive calorie amount.');
-                return;
-            }
-            // Add the new item to the foodItems array
-            foodItems.push({ name: foodName, calories: calories });
-            // Clear the input fields
-            foodItemInput.value = '';
-            calorieIntakeInput.value = '';
-            // Re-render the food list and update total
-            renderFoodList();
-        });
-        // Initial render when the page loads (the list will be empty)
-        renderFoodList();
-    </script>
+
+        const data = await response.json();
+        // Check if products array exists and is not empty
+        if (!data.products || data.products.length === 0) {
+          alert('No nutritional data found for the given food item.');
+          return false;
+        }
+
+        // Get the first product from the search results
+        const product = data.products[0];
+        const nutrients = product.nutriments || {};
+        // Extract calorie data, trying common keys, default to 0 if not found
+        const calories = nutrients['energy-kcal'] || nutrients['energy-kcal_100g'] || 0;
+        const roundedCalories = Math.round(calories); // Round calories for display and calculation
+
+        // Create a new list item for the food
+        const listItem = document.createElement('li');
+        // Display the product name (or original input if not available) and calories
+        listItem.textContent = `${product.product_name || foodItem}: ${roundedCalories} kcal `;
+
+        // Create the delete button
+        const deleteButton = document.createElement('button');
+        deleteButton.textContent = 'Delete';
+        deleteButton.className = 'delete-btn'; // Assign a class for styling
+        // Attach an event listener to the delete button
+        deleteButton.onclick = function() {
+          deleteFoodItem(listItem, roundedCalories); // Call deleteFoodItem with the list item and its calories
+        };
+        // Append the delete button to the list item
+        listItem.appendChild(deleteButton);
+
+        // Append the new list item to the food list
+        document.getElementById('food-list').appendChild(listItem);
+
+        // Update the total calorie intake
+        const totalCalorieEl = document.getElementById('total-calorie-intake');
+        const currentCalories = parseInt(totalCalorieEl.textContent) || 0; // Get current total
+        totalCalorieEl.textContent = currentCalories + roundedCalories; // Add new item's calories
+
+        // Clear the input field
+        document.getElementById('food-item').value = '';
+      } catch (error) {
+        console.error('Fetch error:', error);
+        alert('Failed to fetch nutritional data. Please check your internet connection or try again later.');
+      }
+
+      return false; // Prevent form from submitting normally
+    }
+
+    /**
+     * Deletes a food item from the list and updates the total calorie intake.
+     * @param {HTMLElement} listItem - The <li> element to be removed.
+     * @param {number} caloriesToRemove - The calorie value associated with the item to be removed.
+     */
+    function deleteFoodItem(listItem, caloriesToRemove) {
+      const totalCalorieEl = document.getElementById('total-calorie-intake');
+      const currentCalories = parseInt(totalCalorieEl.textContent) || 0;
+      totalCalorieEl.textContent = currentCalories - caloriesToRemove; // Subtract calories
+
+      listItem.remove(); // Remove the list item from the DOM
+    }
+  </script>
 </body>
 </html>
+
+
+
+
+
 
 
 
